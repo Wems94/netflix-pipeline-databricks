@@ -1,12 +1,12 @@
-# Carrega DATABRICKS_HOST / DATABRICKS_TOKEN do .env (se existir)
--include .env
-export
+# Scripts Python leem DATABRICKS_HOST / DATABRICKS_TOKEN do .env via uv.
+# A CLI databricks usa o profile configurado em `databricks auth login`.
+UV_RUN := uv run --env-file .env
 
 .PHONY: setup data upload deploy run pipeline full-refresh lint fix all
 
-## Infra: cria catálogo (já existente), schemas e volume
+## Infra: cria schemas e volume (o catálogo é criado pela UI)
 setup:
-	uv run scripts/setup_catalog.py
+	$(UV_RUN) scripts/setup_catalog.py
 
 ## Baixa e extrai o dataset MovieLens em data/data_release/
 data:
@@ -14,7 +14,7 @@ data:
 
 ## Envia os CSVs para o volume netflix.bronze.landing
 upload:
-	uv run scripts/upload_raw.py
+	$(UV_RUN) scripts/upload_raw.py
 
 ## Publica o bundle (pipeline + job) no workspace
 deploy:
