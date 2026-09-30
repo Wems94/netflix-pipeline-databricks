@@ -1,0 +1,39 @@
+resources:
+  jobs:
+    netflix_job:
+      name: netflix_job
+
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"
+        timezone_id: America/Sao_Paulo
+        pause_status: PAUSED
+
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - pyyaml
+
+      tasks:
+        - task_key: run_pipeline
+          max_retries: 1
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.netflix_pipeline.id}
+            full_refresh: false
+
+        - task_key: apply_catalog
+          depends_on:
+            - task_key: run_pipeline
+          environment_key: default
+          spark_python_task:
+            python_file: ../scripts/apply_catalog.py
+            parameters:
+              - --catalog-file
+              - ${workspace.file_path}/catalog/catalog.yml
+              - --catalog
+              - ${var.catalog}

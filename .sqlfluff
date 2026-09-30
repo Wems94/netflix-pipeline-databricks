@@ -1,0 +1,15 @@
+[sqlfluff]
+dialect = databricks
+templater = placeholder
+max_line_length = 120
+# RF04: "source" e "year" são nomes de colunas do dataset, não uso de palavra reservada
+# RF01: falsos positivos em referências a colunas de CTEs
+# AM04: SELECT * é intencional na Bronze (cópia fiel do CSV)
+# CP02: falso positivo nos argumentos nomeados do read_files (format =>, header =>)
+# ST06: ordem das colunas mantida igual ao projeto original
+exclude_rules = RF04, RF01, AM04, CP02, ST06
+
+[sqlfluff:templater:placeholder]
+# substitui ${landing_path} por um valor de exemplo só para o lint
+param_style = flyway_var
+landing_path = /Volumes/netflix/bronze/landing

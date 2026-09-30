@@ -1,0 +1,15 @@
+[project]
+name = "netflixpipelinedatabricks"
+version = "0.1.0"
+description = "Pipeline Medallion MovieLens no Databricks"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "databricks-sdk>=0.144.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.9",
+    "sqlfluff>=4.3.0",
+]

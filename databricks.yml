@@ -1,0 +1,18 @@
+bundle:
+  name: netflix-pipeline-databricks
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Catálogo do Unity Catalog usado pelo pipeline
+    default: netflix
+
+targets:
+  dev:
+    mode: development
+    default: true
+
+  prod:
+    mode: production

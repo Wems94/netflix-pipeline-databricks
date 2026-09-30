@@ -1,0 +1,42 @@
+name: CI — Netflix Pipeline Databricks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Lint (ruff + sqlfluff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Lint Python (ruff)
+        run: uv run ruff check scripts/
+
+      - name: Lint SQL (sqlfluff)
+        run: uv run sqlfluff lint src/
+
+  validate-bundle:
+    name: Validate Databricks bundle
+    runs-on: ubuntu-latest
+    needs: lint
+    env:
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Validate bundle
+        run: databricks bundle validate

@@ -1,0 +1,25 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Segredos
+.env
+
+# Dados locais (baixados pelo scripts/download_dataset.py)
+data/
+
+# Databricks bundle (estado local)
+.databricks/
+
+# Caches de ferramentas
+.ruff_cache/
+
+# macOS
+.DS_Store

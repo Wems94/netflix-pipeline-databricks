@@ -1,0 +1,226 @@
+version: 2
+project: netflix-pipeline-databricks
+catalog: netflix
+description: Catálogo de dados do pipeline MovieLens Beliefs 2024 (arquitetura Medallion no Databricks)
+
+# ==============================================================
+# CAMADA BRONZE — Streaming tables (CSV bruto, todas as colunas STRING)
+# ==============================================================
+bronze:
+
+  raw_movies:
+    description: Informações dos filmes disponíveis no MovieLens (CSV bruto).
+    columns:
+      movieid: Identificador único do filme.
+      title: Título do filme, podendo conter o ano de lançamento entre parênteses.
+      genres: Gêneros do filme separados por pipe (|).
+      _source_file: Caminho do arquivo de origem no volume.
+      _ingested_at: Momento em que a linha foi ingerida.
+
+  raw_user_rating_history:
+    description: Histórico de avaliações feitas pelos usuários no MovieLens (CSV bruto).
+    columns:
+      userid: Identificador anônimo do usuário.
+      movieid: Identificador do filme avaliado.
+      rating: Nota dada ao filme, escala de 0.5 a 5.0 com incrementos de 0.5.
+      tstamp: Data e hora da avaliação no formato yyyy-MM-dd HH:mm:ss.
+      _source_file: Caminho do arquivo de origem no volume.
+      _ingested_at: Momento em que a linha foi ingerida.
+
+  raw_ratings_for_additional_users:
+    description: Avaliações de usuários adicionais incluídos na atualização de fev/2025 (CSV bruto).
+    columns:
+      userid: Identificador anônimo do usuário.
+      movieid: Identificador do filme avaliado.
+      rating: Nota dada ao filme, escala de 0.5 a 5.0 com incrementos de 0.5.
+      tstamp: Data e hora da avaliação no formato yyyy-MM-dd HH:mm:ss.
+      _source_file: Caminho do arquivo de origem no volume.
+      _ingested_at: Momento em que a linha foi ingerida.
+
+  raw_belief_data:
+    description: Crenças elicitadas — ratings esperados de filmes não assistidos (CSV bruto).
+    columns:
+      userid: Identificador anônimo do usuário.
+      movieid: Identificador do filme exibido na elicitação.
+      isseen: Indicador se o filme foi assistido. -1=sem resposta, 0=não assistiu, 1=assistiu.
+      watchdate: Data aproximada em que o usuário assistiu ao filme (preenchido só se isseen=1).
+      userelicitrating: Nota real do usuário para o filme (preenchido só se isseen=1).
+      userpredictrating: Nota esperada do usuário para o filme (preenchido só se isseen=0).
+      usercertainty: Certeza do usuário sobre o rating esperado, escala de 1.0 a 5.0 (preenchido só se isseen=0).
+      tstamp: Data e hora da elicitação no formato yyyy-MM-dd HH:mm:ss.
+      movie_idx: Posição do filme na lista exibida ao usuário durante a elicitação.
+      source: Origem do filme na elicitação. 1=amostragem ampla, 2=com possível recomendação, 3=filmes novos.
+      systempredictrating: Rating previsto pelo sistema de recomendação para o par usuário-filme.
+      _source_file: Caminho do arquivo de origem no volume.
+      _ingested_at: Momento em que a linha foi ingerida.
+
+  raw_movie_elicitation_set:
+    description: Conjunto de filmes utilizados no processo de elicitação de crenças (CSV bruto).
+    columns:
+      movieid: Identificador do filme no conjunto de elicitação.
+      month_idx: Índice do mês em que o filme fez parte do conjunto de elicitação.
+      source: Critério de seleção do filme. 1=Popularidade, 2=Rating, 3=Lançamentos populares, 4=Lançamentos em alta, 5=Serendipidade.
+      tstamp: Data e hora da atualização do conjunto de elicitação.
+      _source_file: Caminho do arquivo de origem no volume.
+      _ingested_at: Momento em que a linha foi ingerida.
+
+  raw_user_recommendation_history:
+    description: Histórico de recomendações exibidas aos usuários pelo sistema do MovieLens (CSV bruto).
+    columns:
+      userid: Identificador anônimo do usuário.
+      tstamp: Momento da recomendação em segundos desde 1970-01-01 UTC (Unix epoch).
+      movieid: Identificador do filme recomendado.
+      predictedrating: Rating previsto pelo sistema de recomendação para o usuário.
+      _source_file: Caminho do arquivo de origem no volume.
+      _ingested_at: Momento em que a linha foi ingerida.
+
+# ==============================================================
+# CAMADA SILVER — Materialized views (limpas, tipadas e deduplicadas)
+# ==============================================================
+silver:
+
+  dim_movies:
+    description: Dimensão de filmes com tipos corrigidos e ano de lançamento extraído, deduplicada por movie_id.
+    columns:
+      movie_id: Identificador único do filme (BIGINT).
+      title: Título do filme.
+      genres: Gêneros do filme separados por pipe (|).
+      release_year: Ano de lançamento extraído do título via regexp_extract (INT).
+
+  fact_ratings:
+    description: Fato de avaliações unificando duas fontes, com limpeza, tipagem, deduplicação e surrogate key.
+    columns:
+      rating_id: Surrogate key determinística (MD5) gerada a partir de user_id + movie_id + rating_ts.
+      user_id: Identificador anônimo do usuário (BIGINT).
+      movie_id: Identificador do filme avaliado (BIGINT).
+      rating: Nota dada ao filme, escala de 0.5 a 5.0 (DOUBLE).
+      rating_ts: Timestamp da avaliação.
+      src: Fonte da avaliação. 'user_rating_history' ou 'rating_for_additional_users'.
+
+  fact_belief_data:
+    description: Crenças elicitadas — ratings esperados e certeza dos usuários para filmes não assistidos.
+    columns:
+      user_id: Identificador anônimo do usuário (BIGINT).
+      movie_id: Identificador do filme (BIGINT).
+      is_seen: Se o filme foi assistido. -1=sem resposta, 0=não assistiu, 1=assistiu.
+      watch_date: Data em que o usuário assistiu ao filme (preenchido só se is_seen=1).
+      user_elicit_rating: Nota real do usuário (preenchido só se is_seen=1).
+      user_predict_rating: Nota esperada do usuário (preenchido só se is_seen=0).
+      user_certainty: Certeza do usuário sobre o rating esperado, escala de 1.0 a 5.0.
+      belief_ts: Timestamp da elicitação.
+      movie_idx: Posição do filme na lista exibida ao usuário durante a elicitação.
+      source: Origem do filme. 1=amostragem ampla, 2=com possível recomendação, 3=filmes novos.
+      system_predict_rating: Rating previsto pelo sistema de recomendação (DOUBLE).
+
+  fact_recommendation_history:
+    description: Histórico de recomendações exibidas pelo sistema com rating previsto.
+    columns:
+      user_id: Identificador anônimo do usuário (BIGINT).
+      recommendation_ts: Timestamp da recomendação, convertido de Unix epoch.
+      movie_id: Identificador do filme recomendado (BIGINT).
+      predicted_rating: Rating previsto pelo sistema de recomendação (DOUBLE).
+
+  dim_movie_elicitation:
+    description: Filmes do processo de elicitação com critério de seleção decodificado.
+    columns:
+      movie_id: Identificador do filme (BIGINT).
+      month_idx: Índice do mês em que o filme fez parte do conjunto de elicitação.
+      source: Critério numérico de seleção (1-5).
+      source_label: Rótulo legível do critério (ex. Popularidade, Rating).
+      elicitation_ts: Timestamp da atualização do conjunto de elicitação.
+
+# ==============================================================
+# CAMADA GOLD — Materialized views analíticas para dashboards
+# ==============================================================
+gold:
+
+  vw_movies_kpis:
+    description: KPIs por filme com métricas agregadas de avaliação.
+    columns:
+      movie_id: Identificador do filme.
+      title: Título do filme (nulo quando o filme não existe em dim_movies).
+      genres: Gêneros do filme.
+      release_year: Ano de lançamento do filme.
+      total_rating: Total de avaliações recebidas pelo filme.
+      avg_rating: Média das avaliações do filme.
+      std_rating: Desvio padrão das avaliações do filme.
+      first_rating_ts: Timestamp da primeira avaliação recebida.
+      last_rating_ts: Timestamp da última avaliação recebida.
+
+  vw_genre_performance:
+    description: Performance e volume de avaliações agrupados por gênero.
+    columns:
+      genre: Nome do gênero do filme.
+      total_ratings: Total de avaliações do gênero.
+      avg_rating: Média das avaliações do gênero.
+      std_rating: Desvio padrão das avaliações do gênero.
+
+  vw_ratings_heatmap:
+    description: Volume de avaliações agrupado por mês e ano para visualização em heatmap.
+    columns:
+      year: Ano da avaliação.
+      month_number: Número do mês da avaliação (1-12).
+      month_name: Nome abreviado do mês (Jan, Feb, ...).
+      total_ratings: Total de avaliações no período.
+
+  vw_top_movies:
+    description: Ranking dos filmes mais avaliados com métricas de qualidade.
+    columns:
+      movie_id: Identificador do filme.
+      title: Título do filme.
+      genres: Gêneros do filme.
+      total_rating: Total de avaliações recebidas (0 se o filme nunca foi avaliado).
+      avg_rating: Média das avaliações.
+
+  vw_user_activity:
+    description: Atividade e engajamento dos usuários na plataforma.
+    columns:
+      user_id: Identificador do usuário.
+      total_ratings: Total de avaliações feitas pelo usuário.
+      distinct_movies_rated: Quantidade de filmes distintos avaliados pelo usuário.
+      avg_rating: Média das avaliações do usuário.
+      std_rating: Desvio padrão das avaliações do usuário.
+      first_activity_ts: Timestamp da primeira avaliação do usuário.
+      last_activity_ts: Timestamp da última avaliação do usuário.
+
+  vw_scatter_popularity_vs_quality:
+    description: Filmes com 50 ou mais avaliações para análise de popularidade versus qualidade.
+    columns:
+      movie_id: Identificador do filme.
+      title: Título do filme.
+      genres: Gêneros do filme.
+      total_rating: Total de avaliações recebidas (mínimo 50).
+      avg_rating: Média das avaliações do filme.
+
+  vw_recommendation_accuracy:
+    description: Acurácia do sistema de recomendação por filme — MAE e RMSE entre rating previsto e real.
+    columns:
+      movie_id: Identificador do filme.
+      title: Título do filme.
+      genres: Gêneros do filme.
+      total_predictions: Total de predições comparadas com avaliações reais.
+      mae: Erro absoluto médio entre rating previsto e real.
+      rmse: Raiz do erro quadrático médio entre rating previsto e real.
+      avg_predicted: Média dos ratings previstos pelo sistema.
+      avg_actual: Média dos ratings reais dos usuários.
+
+  vw_user_cohort_analysis:
+    description: Coortes de usuários por mês da primeira avaliação — retenção e engajamento ao longo do tempo.
+    columns:
+      cohort_month: Mês da primeira avaliação do grupo de usuários.
+      months_since_cohort: Meses decorridos desde o mês de coorte.
+      active_users: Usuários ativos no período.
+      total_ratings: Total de avaliações feitas pela coorte no período.
+
+  vw_belief_vs_reality:
+    description: Gap entre o rating esperado antes de assistir e o rating real após assistir.
+    columns:
+      user_id: Identificador do usuário.
+      movie_id: Identificador do filme.
+      title: Título do filme.
+      genres: Gêneros do filme.
+      expected_rating: Rating que o usuário esperava dar antes de assistir.
+      actual_rating: Rating que o usuário deu após assistir.
+      user_certainty: Certeza do usuário sobre o rating esperado.
+      expectation_gap: Diferença entre rating real e esperado (positivo = melhor que o esperado).
+      abs_expectation_gap: Magnitude absoluta da diferença de expectativa.
